@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<head>
+    <meta charset="utf-8">
+    <style type="text/css">
+
+        .axis path,
+        .axis line {
+            fill: none;
+            stroke: grey;
+            shape-rendering: crispEdges;
+        }
+
+        .axis text {
+            font-family: verdana;
+            font-weight: bold;
+            font-size: 11px;
+            fill: dimgray;
+        }
+
+        .y.axis path {
+            display: none;
+        }
+
+        .y.axis line {
+            stroke: #000;
+            stroke-opacity: .2;
+            shape-rendering: crispEdges;
+        }
+
+        .y.axis.title {
+            font-family: verdana;
+            font-weight: bold;
+            font-size: 11px;
+            text-transform: uppercase;
+            fill: darkgray;
+        }
+
+        .series {
+            opacity: 0.8;
+        }
+
+        .point {
+            stroke: grey;
+            stroke-width: 3px;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .point:hover {
+            opacity: .5;
+        }
+
+        #tooltip {
+            position:absolute;
+            opacity: 0;
+            font-family: verdana;
+            background-color: lightgray;
+            padding: 10px;
+            border: 1px darkslateblue solid;
+        }
+
+    </style>
+</head>
+<body>
+<div id="tooltip"></div>
+<script src="d3.min.js"></script>
+<script>
+
+
+    var data = [
+        { date: '20/10/2014', desktop: 3210, iphone: 300, android: 530},
+        { date: '21/10/2014', desktop: 2860, iphone: 240, android: 440},
+        { date: '22/10/2014', desktop: 3210, iphone: 300, android: 530},
+        { date: '23/10/2014', desktop: 3210, iphone: 300, android: 530},
+        { date: '24/10/2014', desktop: 1267, iphone: 56, android: 579},
+        { date: '25/10/2014', desktop: 3210, iphone: 300, android: 530},
+        { date: '26/10/2014', desktop: 3210, iphone: 300, android: 530},
+    ];
+
+
+    var margin = {top: 20, right: 65, bottom: 30, left: 40},
+            width = 1000 - margin.left - margin.right,
+            height = 500 - margin.top - margin.bottom;
+
+    var parseDate = d3.time.format("%d/%m/%Y").parse;
+    var dateFormat = d3.time.format("%d %b");
+
+    var xScale = d3.time.scale().range([0, width]);
+    var yScale = d3.scale.linear().rangeRound([height, 0]);
+
+    var yAxis = d3.svg.axis().scale(yScale).orient("right").tickSize(-width, 0, 0);
+    var xAxis = d3.svg.axis().scale(xScale).orient("bottom").tickFormat(dateFormat).ticks(data.length);
+
+
+    var stack = d3.layout.stack()
+            .offset("zero")
+            .values(function (d) {
+                return d.values;
+            })
+            .x(function (d) {
+                return xScale(d.label);
+            })
+            .y(function (d) {
+                return d.value;
+            });
+
+    var area = d3.svg.area()
+            .x(function (d) {
+                return xScale(d.label);
+            })
+            .y0(function (d) {
+                return yScale(d.y0);
+            })
+            .y1(function (d) {
+                return yScale(d.y0 + d.y);
+            });
+
+    var color = d3.scale.category20();
+    // .range(["#001c9c","#101b4d","#475003","#9c8305","#d3c47c"]);
+
+    var svg = d3.select("body").append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+
+    data.forEach(function (d) {
+        d.date = parseDate(d.date);
+    });
+
+    var devices = d3.keys(data[0])
+            .filter(function (key) {
+                return key !== 'date';
+            });
+
+    color.domain(devices);
+
+    var seriesArr = [], series = {};
+    devices.forEach(function (name) {
+        series[name] = {name: name, values: []};
+        seriesArr.push(series[name]);
+    });
+
+
+    data.forEach(function (d) {
+        devices.map(function (name) {
+            series[name].values.push({label: d.date, name: name, value: +d[name]});
+        });
+    });
+
+    xScale.domain(d3.extent(data, function (d) {
+        return d.date;
+    }));
+
+    stack(seriesArr);
+
+    yScale.domain([0, d3.max(seriesArr, function (c) {
+        return d3.max(c.values, function (d) {
+            return d.y0 + d.y;
+        });
+    })]);
+
+    svg.append("g")
+            .attr("transform", "translate(" + width + ", 0)")
+            .attr("class", "y axis")
+            .call(yAxis);
+
+    svg.append("text")
+            .attr("transform", "rotate(90)")
+            .attr("y", -width - margin.right)
+            .attr("x", height / 2)
+            .attr("class", "y axis title")
+            .attr("dy", "1em")
+            .style("text-anchor", "middle")
+            .text("Revenue in US$");
+
+
+    svg.append("g")
+            .attr("transform", "translate(0," + height + ")")
+            .attr("class", "x axis")
+            .call(xAxis);
+
+    var selection = svg.selectAll(".series")
+            .data(seriesArr)
+            .enter().append("g")
+            .attr("class", "series");
+
+    selection.append("path")
+            .attr("class", "streamPath")
+            .attr("d", function (d) {
+                return area(d.values);
+            })
+            .style("fill", function (d) {
+                return color(d.name);
+            });
+
+
+    var tooltip = d3.selectAll("#tooltip");
+    function showTooltip(d) {
+        var points = svg.selectAll("[x-label='" + d.label.getTime() + "']")
+                .style("opacity", 0.2);
+
+
+        var innerHtml = points.data().map(function(d) {
+            return '<div>' + d.name + ': ' + d.value + '</div>';
+        }).join('');
+
+        tooltip.transition()
+                .duration(200)
+                .style("opacity", .9);
+        tooltip .html(innerHtml)
+                .style("left", (d3.event.pageX + 20) + "px")
+                .style("top", (d3.event.pageY - 28) + "px");
+    }
+
+    function hideTooltip(d) {
+        svg.selectAll("[x-label='" + d.label.getTime() + "']")
+                .style("opacity", 0);
+
+        tooltip.transition()
+                .duration(500)
+                .style("opacity", 0);
+    }
+
+    var points = svg.selectAll(".seriesPoints")
+            .data(seriesArr)
+            .enter().append("g")
+            .attr("class", "seriesPoints");
+
+    points.selectAll(".point")
+            .data(function (d) {
+                return d.values;
+            })
+            .enter().append("circle")
+            .attr("class", "point")
+            .attr("x-label", function (d) {
+                return d.label.getTime();
+            })
+            .attr("cx", function (d) {
+                return xScale(d.label);
+            })
+            .attr("cy", function (d) {
+                return yScale(d.y0 + d.y);
+            })
+            .attr("r", "10px")
+            .style("fill", function (d) {
+                return color(d.name);
+            })
+            .on("mouseover", function (d) {
+                showTooltip.call(this, d);
+            })
+            .on("mouseout", function (d) {
+                hideTooltip.call(this, d);
+            });
+
+
+</script>
+</body>
+</html>
